@@ -14,7 +14,7 @@
 |------------|----------------|
 | **Shallow scanning** | Walks only **top-level** library folders with `os.scandir()`. Compares each folder’s `st_mtime` to SQLite; **TMDB/TVDB and deeper file checks run only when the folder is new or changed.** |
 | **Metadata integration** | Resolves titles, status (e.g. ended vs. returning), IDs, and episode lists via **TMDB**; optional **TVDB v4** login for an extra series-status signal when configured. |
-| **Local poster cache** | Downloads posters and stores **resized JPEG thumbnails** under `data/posters/` locally, or **`/config/posters/`** when using Docker **`CONFIG_PATH=/config`**. No hotlinked CDN images in the browser. |
+| **Local poster cache** | Downloads posters and stores **resized JPEG thumbnails** under `data/cache/posters/` locally, or **`/config/cache/posters/`** when using Docker **`CONFIG_PATH=/config`**. No hotlinked CDN images in the browser. |
 | **Independent scans** | **Scan TV** and **Scan Movies** are separate actions with **HTMX** progress panels (no full-page reload). |
 | **Configurable schedules** | **APScheduler** runs periodic shallow passes; interval is configurable (minimum 15 minutes). |
 | **In-app settings** | API keys and paths can be stored in SQLite after the first save (seeded from `.env` on a fresh install). |
@@ -57,11 +57,38 @@ Start the stack:
 docker compose up --build
 ```
 
-On first boot the container logs a line like **`[Open Media Tracker] Ready — open http://localhost:8383/`** (host/port follows your mapping).
+On first boot the container logs **`Ready at http://localhost:8383`** (port follows **`APP_PORT`**).
 
 Open **http://localhost:8383** in your browser unless you changed `APP_PORT`.
 
-**Data layout:** A named Docker volume mounts **`/config`** inside the container for SQLite (`open_media_tracker.db`) and poster thumbnails (`posters/`). Your media mounts are **`:ro`** so the app cannot modify library files.
+**Data layout:** A named Docker volume mounts **`/config`** inside the container for SQLite (`open_media_tracker.db`) and poster thumbnails under **`cache/posters/`**. Your media mounts are **`:ro`** so the app cannot modify library files.
+
+### Run from Docker Hub (no `git clone` on the host)
+
+Maintainers publish images with [GitHub Actions](.github/workflows/docker-publish.yml) after adding these **repository secrets**: **`DOCKERHUB_USERNAME`**, **`DOCKERHUB_TOKEN`** (create an access token under [Docker Hub → Account Settings → Security](https://hub.docker.com/settings/security)).
+
+| Trigger | What gets pushed |
+|---------|-------------------|
+| **Git tag** `v1.2.3` | `youruser/open-media-tracker:1.2.3`, `1.2`, and **`latest`** (linux/amd64 + linux/arm64) |
+| **Actions → Publish Docker image → Run workflow** | Tag you type (default **`edge`**) — use when you want a one-off build without a semver tag |
+
+**On any machine** you only need a `.env` (from [.env.example](.env.example)) and Compose:
+
+1. Clone **once** (or copy only `docker-compose.yml` + `.env.example`), set `DOCKER_IMAGE=YOURDOCKERHUB/open-media-tracker:latest` in `.env`, fill API keys and `TV_PATH` / `MOVIE_PATH`.
+2. Run:
+
+   ```bash
+   docker compose pull
+   docker compose up -d --no-build
+   ```
+
+`--no-build` skips a local image build and uses the pulled image. Omit `--no-build` when you are developing with `build: .` and leave `DOCKER_IMAGE` unset or equal to the local image name.
+
+First pull:
+
+```bash
+docker pull YOURDOCKERHUB/open-media-tracker:latest
+```
 
 ---
 
@@ -77,7 +104,8 @@ Environment variables seed the database **once** for missing keys. Values change
 | `TVDB_PIN` | No | Subscriber PIN for TVDB login, **only** if your TVDB setup requires it; sent with the login payload when non-empty. |
 | `APP_PORT` | No | Uvicorn listen port (default **`8383`**). Docker Compose maps host→container using this value. |
 | `APP_PUBLIC_HOST` | No | Hostname printed in startup logs (default `localhost`). Does not change binding; use for clarity on LAN installs. |
-| `CONFIG_PATH` | No | When set (Compose uses **`/config`**), SQLite defaults to **`$CONFIG_PATH/open_media_tracker.db`** and posters to **`$CONFIG_PATH/posters/`**. Local dev leaves this unset (`./data/` under the app). |
+| `CONFIG_PATH` | No | When set (Compose uses **`/config`**), SQLite defaults to **`$CONFIG_PATH/open_media_tracker.db`** and posters to **`$CONFIG_PATH/cache/posters/`**. Local dev leaves this unset (`./data/` under the app). |
+| `DOCKER_IMAGE` | Compose | **Docker Hub image** (e.g. `youruser/open-media-tracker:latest`). Set in `.env` when using **`docker compose pull`** instead of building locally. |
 | `TV_PATH` / `MOVIE_PATH` | Compose | **Host paths** passed into `docker-compose.yml` for **read-only** bind mounts at `/media/tv` and `/media/movies`. |
 | `LIBRARY_TV_PATH` | Recommended | Path seen **inside the running app** to the TV root. Compose pins **`/media/tv`**; override only if you customize mounts. |
 | `LIBRARY_MOVIES_PATH` | Recommended | Path seen **inside the running app** to the movies root. Compose pins **`/media/movies`**. |

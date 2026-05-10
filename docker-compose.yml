@@ -8,7 +8,8 @@ networks:
 services:
   open-media-tracker:
     build: .
-    image: open-media-tracker:latest
+    # Local build default; for Docker Hub use e.g. YOURUSER/open-media-tracker:latest in .env as DOCKER_IMAGE
+    image: ${DOCKER_IMAGE:-open-media-tracker:latest}
     container_name: open-media-tracker
     restart: unless-stopped
     networks:

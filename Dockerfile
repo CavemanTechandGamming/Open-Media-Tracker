@@ -1,6 +1,11 @@
 # Lightweight production image — Python 3.14 slim (~ suitable for low-power homelab hosts)
 FROM python:3.14-slim-bookworm
 
+ARG VCS_REF=
+LABEL org.opencontainers.image.title="Open Media Tracker" \
+      org.opencontainers.image.description="Self-hosted TV and movie library audit dashboard (TMDB / TVDB)." \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

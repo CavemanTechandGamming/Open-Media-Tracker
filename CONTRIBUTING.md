@@ -17,6 +17,19 @@ Maintainers may edit, close, or moderate discussions or contributions that under
 
 ---
 
+## Publishing Docker images (Docker Hub)
+
+The workflow [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) builds **linux/amd64** and **linux/arm64** and pushes to Docker Hub.
+
+1. In the GitHub repo, add **Actions** secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`** (Docker Hub [access token](https://hub.docker.com/settings/security)).
+2. Create a repository on Docker Hub named **`open-media-tracker`** (or change `IMAGE_NAME` in the workflow to match your image name).
+3. **Release:** tag a commit with a semver tag such as **`v1.0.0`** and push the tag; the workflow publishes version tags and **`latest`**.
+4. **Ad-hoc:** run **Actions → Publish Docker image → Run workflow**; the default tag **`edge`** avoids overwriting **`latest`** unless you choose otherwise.
+
+See the README section **Run from Docker Hub** for how end users pull and run with **`DOCKER_IMAGE`** and **`docker compose pull`**.
+
+---
+
 ## Development setup (without Docker)
 
 From the repository root, using a virtual environment is strongly recommended.
