@@ -1,5 +1,8 @@
 {% for row in media_rows %}
-<tr class="border-t border-slate-800/80 hover:bg-slate-800/30">
+<tr class="cursor-pointer border-t border-slate-800/80 hover:bg-slate-800/40"
+    hx-get="/tv/{{ row.id }}/audit"
+    hx-target="#tv-audit-panel"
+    hx-swap="innerHTML">
   <td class="px-5 py-3">
     <div class="flex items-center gap-3">
       {% if row.poster_local %}
@@ -12,11 +15,6 @@
         <p class="truncate text-xs text-slate-500" title="{{ row.folder_path }}">{{ row.folder_path }}</p>
       </div>
     </div>
-  </td>
-  <td class="px-5 py-3">
-    <span class="rounded-full px-2 py-0.5 text-xs font-medium {% if row.media_type == 'tv' %}bg-sky-500/15 text-sky-300{% else %}bg-violet-500/15 text-violet-300{% endif %}">
-      {{ row.media_type | upper }}
-    </span>
   </td>
   <td class="hidden px-5 py-3 text-xs text-slate-400 md:table-cell">
     {% if row.tmdb_id %}TMDB {{ row.tmdb_id }}{% endif %}
@@ -35,8 +33,6 @@
       <span class="h-1.5 w-1.5 rounded-full bg-rose-400"></span>
       {{ row.status or 'Ended' }}
     </span>
-    {% elif row.media_type == 'movie' and row.status %}
-    <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-200">{{ row.status }}</span>
     {% else %}
     <span class="text-xs text-slate-500">{{ row.status or '—' }}</span>
     {% endif %}
@@ -44,24 +40,28 @@
     <p class="mt-1 max-w-xs truncate text-[11px] text-rose-400" title="{{ row.last_error }}">{{ row.last_error }}</p>
     {% endif %}
   </td>
-  <td class="px-5 py-3 text-right tabular-nums text-slate-300">
-    {% if row.media_type == 'tv' %}
-      {% set missing = [0, row.total_episodes_api - row.episodes_present_local] | max %}
-      {% if missing > 0 %}
-      <span class="font-semibold text-amber-300">{{ missing }}</span>
-      {% else %}
-      <span class="text-emerald-400/90">0</span>
-      {% endif %}
-      <span class="block text-[11px] font-normal text-slate-500">{{ row.episodes_present_local }}/{{ row.total_episodes_api }} local</span>
+  <td class="px-5 py-3 text-right">
+    {% set total = row.total_episodes_api %}
+    {% set have = row.episodes_present_local %}
+    {% if total > 0 and have >= total %}
+    <span class="inline-flex items-center justify-end rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-200">Complete</span>
+    <span class="mt-1 block text-[11px] font-normal text-slate-500">{{ have }}/{{ total }} collected</span>
+    {% elif total > 0 %}
+    {% set missing = total - have %}
+    <span class="text-sm font-semibold tabular-nums text-slate-200">{{ have }}/{{ total }}</span>
+    <span class="mt-1 block text-[11px] text-slate-500">collected</span>
+    {% if missing > 0 %}
+    <span class="mt-0.5 block text-[11px] font-medium text-amber-300">{{ missing }} missing</span>
+    {% endif %}
     {% else %}
-    <span class="text-slate-500">—</span>
+    <span class="text-xs text-slate-500">—</span>
     {% endif %}
   </td>
 </tr>
 {% else %}
 <tr>
-  <td colspan="5" class="px-5 py-16 text-center text-sm text-slate-500">
-    No media indexed yet. Configure library paths below, add your TMDB token, then run a scan.
+  <td colspan="4" class="px-5 py-16 text-center text-sm text-slate-500">
+    No TV shows indexed yet. Set library paths in Settings, then run a TV scan.
   </td>
 </tr>
 {% endfor %}

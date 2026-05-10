@@ -1,0 +1,33 @@
+<div class="space-y-4 text-left">
+  <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/80 pb-3">
+    <div class="min-w-0">
+      <p class="truncate text-base font-semibold text-white">{{ show.title or show.folder_name }}</p>
+      <p class="mt-1 text-xs text-slate-500">{{ show.folder_path }}</p>
+      <p class="mt-2 text-xs text-slate-400">
+        {{ show.episodes_present_local }} / {{ show.total_episodes_api }} episodes collected
+        {% if missing_count > 0 %}
+        · <span class="font-medium text-amber-300">{{ missing_count }} missing</span>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  {% if show.total_episodes_api == 0 %}
+  <p class="text-sm text-slate-400">No episode list from TMDB yet. Run a TV scan after a successful match.</p>
+  {% elif missing_count == 0 %}
+  <p class="text-sm text-emerald-300">All aired episodes from the last sync appear to be present on disk.</p>
+  {% else %}
+  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Missing episodes</p>
+  <ul class="max-h-80 space-y-2 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-sm">
+    {% for ep in missing_episodes %}
+    <li class="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-800/60 py-2 last:border-0">
+      <span class="font-medium text-slate-200">Season {{ ep.season_number }}, Episode {{ ep.episode_number }}</span>
+      <span class="shrink-0 rounded bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-200">Missing</span>
+      {% if ep.title %}
+      <p class="w-full text-xs text-slate-400">{{ ep.title }}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>

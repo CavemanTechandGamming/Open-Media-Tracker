@@ -10,17 +10,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from apscheduler.triggers.interval import IntervalTrigger
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import nulls_last, select
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, get_db, init_db
-from settings import settings, validate_api_credentials
-from models import Config, Media
+from models import Config, Episode, Media
 from scanner import (
     load_setting,
     run_scan_movies_background,
@@ -28,6 +27,7 @@ from scanner import (
     scan_state,
     scheduled_full_scan,
 )
+from settings import settings, validate_api_credentials
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -118,25 +118,8 @@ app = FastAPI(title="Open Media Tracker", lifespan=lifespan)
 app.mount("/posters", StaticFiles(directory=str(POSTER_DIR)), name="posters")
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    """Lightweight probe for Docker healthchecks and reverse proxies."""
-    return {"status": "ok"}
-
-
-@app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, db: Session = Depends(get_db)):
-    rows = db.execute(
-        select(Media).order_by(nulls_last(Media.title.asc()), Media.folder_name.asc())
-    ).scalars().all()
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "media_rows": rows,
-            "settings": _settings_dict(db),
-        },
-    )
+def _is_htmx(request: Request) -> bool:
+    return (request.headers.get("hx-request") or "").lower() == "true"
 
 
 def _settings_dict(db: Session) -> dict[str, str]:
@@ -151,16 +134,112 @@ def _settings_dict(db: Session) -> dict[str, str]:
     }
 
 
-@app.get("/fragments/media-table", response_class=HTMLResponse)
-def fragment_media_table(request: Request, db: Session = Depends(get_db)):
+def _media_select_ordered():
+    return select(Media).order_by(nulls_last(Media.title.asc()), Media.folder_name.asc())
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Lightweight probe for Docker healthchecks and reverse proxies."""
+    return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    return RedirectResponse(url="/tv", status_code=302)
+
+
+@app.get("/movies", response_class=HTMLResponse)
+def page_movies(request: Request, db: Session = Depends(get_db)):
     rows = db.execute(
-        select(Media).order_by(nulls_last(Media.title.asc()), Media.folder_name.asc())
+        _media_select_ordered().where(Media.media_type == "movie"),
+    ).scalars().all()
+    ctx: dict = {
+        "active_nav": "movies",
+        "settings": _settings_dict(db),
+        "media_rows": rows,
+    }
+    if _is_htmx(request):
+        return templates.TemplateResponse(request, "partials/main_movies.html", ctx)
+    return templates.TemplateResponse(request, "pages/movies.html", ctx)
+
+
+@app.get("/tv", response_class=HTMLResponse)
+def page_tv(request: Request, db: Session = Depends(get_db)):
+    rows = db.execute(
+        _media_select_ordered().where(Media.media_type == "tv"),
+    ).scalars().all()
+    ctx: dict = {
+        "active_nav": "tv",
+        "settings": _settings_dict(db),
+        "media_rows": rows,
+    }
+    if _is_htmx(request):
+        return templates.TemplateResponse(request, "partials/main_tv.html", ctx)
+    return templates.TemplateResponse(request, "pages/tv.html", ctx)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def page_settings(request: Request, db: Session = Depends(get_db)):
+    toast = None
+    if request.query_params.get("saved") == "1":
+        toast = "Settings saved."
+    ctx: dict = {
+        "active_nav": "settings",
+        "settings": _settings_dict(db),
+        "toast": toast,
+    }
+    if _is_htmx(request):
+        return templates.TemplateResponse(request, "partials/main_settings.html", ctx)
+    return templates.TemplateResponse(request, "pages/settings.html", ctx)
+
+
+@app.get("/tv/{show_id}/audit", response_class=HTMLResponse)
+def tv_show_audit(request: Request, show_id: int, db: Session = Depends(get_db)):
+    media = db.get(Media, show_id)
+    if media is None or media.media_type != "tv":
+        raise HTTPException(status_code=404, detail="TV show not found")
+    missing = db.execute(
+        select(Episode)
+        .where(Episode.media_id == show_id, Episode.exists_locally.is_(False))
+        .order_by(Episode.season_number, Episode.episode_number),
+    ).scalars().all()
+    missing_count = len(missing)
+    ctx = {
+        "show": media,
+        "missing_episodes": missing,
+        "missing_count": missing_count,
+    }
+    return templates.TemplateResponse(request, "partials/tv_audit.html", ctx)
+
+
+@app.get("/fragments/movies-table", response_class=HTMLResponse)
+def fragment_movies_table(request: Request, db: Session = Depends(get_db)):
+    rows = db.execute(
+        _media_select_ordered().where(Media.media_type == "movie"),
     ).scalars().all()
     return templates.TemplateResponse(
         request,
-        "partials/media_table.html",
+        "partials/movies_table.html",
         {"media_rows": rows},
     )
+
+
+@app.get("/fragments/tv-table", response_class=HTMLResponse)
+def fragment_tv_table(request: Request, db: Session = Depends(get_db)):
+    rows = db.execute(
+        _media_select_ordered().where(Media.media_type == "tv"),
+    ).scalars().all()
+    return templates.TemplateResponse(
+        request,
+        "partials/tv_table.html",
+        {"media_rows": rows},
+    )
+
+
+@app.get("/fragments/tv-audit-empty", response_class=HTMLResponse)
+def fragment_tv_audit_empty(request: Request):
+    return templates.TemplateResponse(request, "partials/tv_audit_empty.html", {})
 
 
 @app.get("/fragments/scan-tv-status", response_class=HTMLResponse)
@@ -284,14 +363,17 @@ def save_settings(
             trigger=IntervalTrigger(minutes=_interval_minutes(db)),
         )
 
-    rows = db.execute(
-        select(Media).order_by(nulls_last(Media.title.asc()), Media.folder_name.asc())
-    ).scalars().all()
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {"media_rows": rows, "settings": _settings_dict(db), "toast": "Settings saved."},
-    )
+    if _is_htmx(request):
+        return templates.TemplateResponse(
+            request,
+            "partials/main_settings.html",
+            {
+                "active_nav": "settings",
+                "settings": _settings_dict(db),
+                "settings_saved_banner": "Settings saved.",
+            },
+        )
+    return RedirectResponse(url="/settings?saved=1", status_code=303)
 
 
 if __name__ == "__main__":

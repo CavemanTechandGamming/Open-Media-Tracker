@@ -1,0 +1,62 @@
+<div class="space-y-8">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-lg font-semibold text-white">TV shows</h2>
+    <button type="button"
+            class="inline-flex items-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-slate-950 disabled:opacity-50"
+            hx-post="/scan/tv"
+            hx-target="#scan-tv-panel"
+            hx-swap="outerHTML">
+      Scan TV
+    </button>
+  </div>
+
+  <div id="scan-tv-panel"
+       hx-get="/fragments/scan-tv-status"
+       hx-trigger="load"
+       hx-swap="outerHTML"
+       class="flex min-h-[132px] items-center justify-center rounded-xl border border-dashed border-slate-800 bg-slate-900/30 text-sm text-slate-500">
+    Loading TV scan panel…
+  </div>
+
+  <section class="rounded-2xl border border-slate-800 bg-slate-900/40 shadow-xl shadow-black/30 backdrop-blur-sm">
+    <div class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Library</h3>
+      <span class="cursor-default text-xs text-slate-500"
+            hx-get="/fragments/tv-table"
+            hx-trigger="load delay:3s, every 12s"
+            hx-target="#tv-table-mount"
+            hx-swap="innerHTML">Auto-refresh</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-slate-800 text-left text-sm">
+        <thead class="bg-slate-950/60 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-5 py-3 font-medium">Title</th>
+            <th class="hidden px-5 py-3 font-medium md:table-cell">IDs</th>
+            <th class="px-5 py-3 font-medium">Status</th>
+            <th class="px-5 py-3 font-medium text-right">Episodes</th>
+          </tr>
+        </thead>
+        <tbody id="tv-table-mount">
+          {% include "partials/tv_table.html" %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tv-audit-section" class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-inner shadow-black/20">
+    <div class="flex items-center justify-between gap-2">
+      <h3 class="text-sm font-semibold text-slate-200">Episode audit</h3>
+      <button type="button"
+              class="text-xs text-slate-500 hover:text-slate-300"
+              hx-get="/fragments/tv-audit-empty"
+              hx-target="#tv-audit-panel"
+              hx-swap="innerHTML">
+        Clear
+      </button>
+    </div>
+    <div id="tv-audit-panel" class="mt-3 min-h-[3rem] rounded-lg border border-dashed border-slate-800/80 bg-slate-950/40 p-4 text-sm text-slate-500">
+      Select a show row to list missing episodes (from the last scan).
+    </div>
+  </section>
+</div>

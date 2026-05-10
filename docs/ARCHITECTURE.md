@@ -156,9 +156,12 @@ There is **no centralized rate limiter**. Load is reduced by design (mtime gate,
 
 | Method / path | Purpose |
 |---------------|---------|
-| `GET /` | Dashboard (library table + settings). |
+| `GET /` | Redirects to **`/tv`**. |
+| `GET /movies`, `GET /tv`, `GET /settings` | Full pages or **HTMX** `#main-content` fragments when `HX-Request: true`. |
+| `GET /tv/{id}/audit` | Missing-episode list for one show (reads `episodes` where `exists_locally` is false). |
 | `GET /health` | `{"status":"ok"}` for Docker health checks and proxies. |
-| `GET /fragments/*` | HTMX partials. |
+| `GET /fragments/movies-table`, `/fragments/tv-table` | HTMX table refresh. |
+| `GET /fragments/scan-*-status` | Scan progress partials. |
 | `POST /scan/tv`, `POST /scan/movies` | Start background scan threads. |
 | `POST /settings` | Persist `config`; reschedule interval job when `SCAN_INTERVAL_MINUTES` changes. |
 | `GET /posters/...` | Cached JPEG thumbnails. |

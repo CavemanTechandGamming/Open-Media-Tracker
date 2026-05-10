@@ -1,0 +1,46 @@
+{% for row in media_rows %}
+<tr class="border-t border-slate-800/80 hover:bg-slate-800/30">
+  <td class="px-5 py-3">
+    <div class="flex items-center gap-3">
+      {% if row.poster_local %}
+      <img src="{{ row.poster_local }}" alt="" width="44" height="66" class="h-14 w-10 shrink-0 rounded object-cover ring-1 ring-slate-700"/>
+      {% else %}
+      <div class="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] text-slate-500 ring-1 ring-slate-700">—</div>
+      {% endif %}
+      <div class="min-w-0">
+        <p class="truncate font-medium text-white">{{ row.title or row.folder_name }}</p>
+        <p class="truncate text-xs text-slate-500" title="{{ row.folder_path }}">{{ row.folder_path }}</p>
+      </div>
+    </div>
+  </td>
+  <td class="hidden px-5 py-3 text-xs text-slate-400 md:table-cell">
+    {% if row.tmdb_id %}TMDB {{ row.tmdb_id }}{% else %}—{% endif %}
+  </td>
+  <td class="px-5 py-3">
+    {% set st = (row.status or '') | lower %}
+    {% if row.status %}
+    <span class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-200">{{ row.status }}</span>
+    {% else %}
+    <span class="text-xs text-slate-500">—</span>
+    {% endif %}
+    {% if row.last_error %}
+    <p class="mt-1 max-w-xs truncate text-[11px] text-rose-400" title="{{ row.last_error }}">{{ row.last_error }}</p>
+    {% endif %}
+  </td>
+  <td class="px-5 py-3 text-right text-sm text-slate-300">
+    {% if row.episodes_present_local and row.episodes_present_local > 0 %}
+    <span class="font-medium text-emerald-300">Present</span>
+    {% elif row.last_api_sync %}
+    <span class="font-medium text-amber-300">Missing file</span>
+    {% else %}
+    <span class="text-slate-500">—</span>
+    {% endif %}
+  </td>
+</tr>
+{% else %}
+<tr>
+  <td colspan="4" class="px-5 py-16 text-center text-sm text-slate-500">
+    No movies indexed yet. Set library paths in Settings, then run a movie scan.
+  </td>
+</tr>
+{% endfor %}

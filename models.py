@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -44,6 +44,7 @@ class Media(Base):
 
 class Episode(Base):
     __tablename__ = "episodes"
+    __table_args__ = (Index("ix_episodes_media_exists", "media_id", "exists_locally"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     media_id: Mapped[int] = mapped_column(ForeignKey("media.id", ondelete="CASCADE"), nullable=False)

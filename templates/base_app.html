@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Open Media Tracker{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["DM Sans", "system-ui", "sans-serif"],
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet"/>
+</head>
+<body class="h-full min-h-screen text-slate-100 antialiased">
+
+{% if toast %}
+<div id="toast-banner" class="fixed right-4 top-4 z-50 rounded-lg border border-emerald-500/40 bg-emerald-950/90 px-4 py-2 text-sm text-emerald-100 shadow-lg backdrop-blur">
+  {{ toast }}
+</div>
+<script>
+  setTimeout(() => {
+    const el = document.getElementById("toast-banner");
+    if (el) el.remove();
+  }, 4000);
+</script>
+{% endif %}
+
+<div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+  <header class="mb-8 border-b border-slate-800 pb-6">
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-widest text-sky-400/90">Self-hosted</p>
+        <h1 class="mt-1 text-3xl font-semibold tracking-tight text-white sm:text-4xl">Open Media Tracker</h1>
+        <p class="mt-2 max-w-xl text-sm text-slate-400">
+          Shallow scans compare folder timestamps before touching TMDB or TVDB. Posters are cached locally for a responsive UI.
+        </p>
+      </div>
+      <nav id="app-nav" class="flex flex-wrap gap-2" aria-label="Primary">
+        <a href="/movies"
+           data-nav="/movies"
+           hx-get="/movies"
+           hx-target="#main-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="nav-link rounded-lg border px-4 py-2 text-sm font-medium transition-colors {% if active_nav == 'movies' %}border-sky-500 bg-slate-800 text-white{% else %}border-transparent bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">
+          Movies
+        </a>
+        <a href="/tv"
+           data-nav="/tv"
+           hx-get="/tv"
+           hx-target="#main-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="nav-link rounded-lg border px-4 py-2 text-sm font-medium transition-colors {% if active_nav == 'tv' %}border-sky-500 bg-slate-800 text-white{% else %}border-transparent bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">
+          TV Shows
+        </a>
+        <a href="/settings"
+           data-nav="/settings"
+           hx-get="/settings"
+           hx-target="#main-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="nav-link rounded-lg border px-4 py-2 text-sm font-medium transition-colors {% if active_nav == 'settings' %}border-sky-500 bg-slate-800 text-white{% else %}border-transparent bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200{% endif %}">
+          Settings
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content">
+    {% block main %}{% endblock %}
+  </main>
+
+  <footer class="mt-10 text-center text-xs text-slate-600">
+    Open Media Tracker · SQLite + TMDB + TVDB
+  </footer>
+</div>
+
+<script>
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (!e.detail.target || e.detail.target.id !== "main-content") return;
+    var url = (e.detail.xhr && e.detail.xhr.responseURL) || "";
+    var path = "/tv";
+    try {
+      path = new URL(url, window.location.origin).pathname;
+    } catch (err) {}
+    document.querySelectorAll("[data-nav]").forEach(function (el) {
+      var on = el.getAttribute("data-nav") === path;
+      el.classList.toggle("border-sky-500", on);
+      el.classList.toggle("bg-slate-800", on);
+      el.classList.toggle("text-white", on);
+      el.classList.toggle("border-transparent", !on);
+      el.classList.toggle("text-slate-400", !on);
+      el.classList.toggle("bg-slate-900", !on);
+    });
+  });
+</script>
+</body>
+</html>

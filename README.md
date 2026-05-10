@@ -156,9 +156,9 @@ Variables are read from the environment (and optional **`.env`** file) via **pyd
 
 | Area | Behavior |
 |------|----------|
-| **Dashboard** | Table of indexed titles, status, IDs, missing-episode counts (TV), cached posters. |
-| **Scan TV / Scan Movies** | Background shallow pass; HTMX polls status fragments. |
-| **Settings** | Updates persisted `config` keys; changing the scan interval reschedules APScheduler. |
+| **Movies / TV / Settings** | Separate views (`/movies`, `/tv`, `/settings`) with HTMX-swapped main content; TV rows open a **missing-episode audit** from cached `episodes` data. |
+| **Scan TV / Scan Movies** | Background shallow pass; HTMX polls status fragments on each library page. |
+| **Settings** | Dedicated page; updates persisted `config` keys and reschedules APScheduler when the interval changes. |
 
 ---
 
@@ -177,7 +177,7 @@ Open-Media-Tracker/
 ├── settings.py          # Environment configuration (pydantic-settings)
 ├── database.py          # SQLite engine, sessions, init_db()
 ├── models.py            # SQLAlchemy models
-├── templates/           # Jinja2 + HTMX
+├── templates/           # Jinja2 + HTMX (`base_app.html`, `pages/`, `partials/`)
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt

@@ -1,0 +1,70 @@
+<div class="space-y-6">
+  <div>
+    <h2 class="text-lg font-semibold text-white">Settings</h2>
+    <p class="mt-1 text-sm text-slate-400">
+      Paths and keys persist in SQLite after save; environment variables seed defaults on a fresh install. See <code class="rounded bg-slate-800 px-1 py-0.5 text-xs text-slate-300">.env.example</code> for supported variables.
+    </p>
+  </div>
+
+  {% if settings_saved_banner %}
+  <div class="rounded-lg border border-emerald-500/40 bg-emerald-950/60 px-4 py-2 text-sm text-emerald-100">
+    {{ settings_saved_banner }}
+  </div>
+  {% endif %}
+
+  <form hx-post="/settings"
+        hx-target="#main-content"
+        hx-swap="innerHTML"
+        class="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl shadow-black/30 backdrop-blur-sm">
+    <div class="grid gap-5 md:grid-cols-2">
+      <label class="block md:col-span-2">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">TV library path</span>
+        <input name="library_tv_path" type="text" value="{{ settings.LIBRARY_TV_PATH }}"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <label class="block md:col-span-2">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Movies library path</span>
+        <input name="library_movies_path" type="text" value="{{ settings.LIBRARY_MOVIES_PATH }}"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <label class="block md:col-span-2">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">TMDB read access token (preferred)</span>
+        <input name="tmdb_read_access_token" type="password" autocomplete="off"
+               value="{{ settings.TMDB_READ_ACCESS_TOKEN }}"
+               placeholder="Bearer token from TMDB dashboard"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <label class="block md:col-span-2">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">TMDB API key v3 (alternative)</span>
+        <input name="tmdb_api_key" type="password" autocomplete="off"
+               value="{{ settings.TMDB_API_KEY }}"
+               placeholder="Use if you do not use a read access token"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <label class="block md:col-span-2">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">TVDB API key</span>
+        <input name="tvdb_api_key" type="password" autocomplete="off"
+               value="{{ settings.TVDB_API_KEY }}"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <label class="block md:col-span-2">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">TVDB PIN (optional)</span>
+        <input name="tvdb_pin" type="password" autocomplete="off"
+               value="{{ settings.TVDB_PIN }}"
+               placeholder="Only if TVDB login requires your subscriber PIN"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <label class="block">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Scan interval (minutes)</span>
+        <input name="scan_interval_minutes" type="number" min="15" step="1"
+               value="{{ settings.SCAN_INTERVAL_MINUTES }}"
+               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"/>
+      </label>
+      <div class="flex items-end md:col-span-1">
+        <button type="submit" class="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-slate-950">
+          Save settings
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
