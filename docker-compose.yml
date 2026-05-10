@@ -1,0 +1,50 @@
+# Open Media Tracker — homelab-friendly Compose (avoids common ports: 80, 443, 8000, 8080, 8096, 32400).
+# Coexists beside Plex, Pi-hole, Jellyfin, OMV, Audiobookshelf when mapped to 8383 (or your APP_PORT).
+
+networks:
+  open-media-tracker:
+    driver: bridge
+
+services:
+  open-media-tracker:
+    build: .
+    image: open-media-tracker:latest
+    container_name: open-media-tracker
+    restart: unless-stopped
+    networks:
+      - open-media-tracker
+    ports:
+      - "${APP_PORT:-8383}:${APP_PORT:-8383}"
+    env_file:
+      - .env
+    environment:
+      APP_PORT: ${APP_PORT:-8383}
+      CONFIG_PATH: /config
+      # Paths inside the container — keep in sync with volume targets below
+      LIBRARY_TV_PATH: /media/tv
+      LIBRARY_MOVIES_PATH: /media/movies
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN:-}
+      TVDB_API_KEY: ${TVDB_API_KEY:-}
+      TVDB_PIN: ${TVDB_PIN:-}
+    volumes:
+      # Writable config + SQLite + thumbnails (never mount your library here)
+      - open-media-tracker-config:/config
+      # Host library roots — read-only hardening for multi-TB libraries
+      - ${TV_PATH:?Set TV_PATH in .env to your host TV library directory}:/media/tv:ro
+      - ${MOVIE_PATH:?Set MOVIE_PATH in .env to your host movies directory}:/media/movies:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('APP_PORT','8383')+'/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  open-media-tracker-config:
