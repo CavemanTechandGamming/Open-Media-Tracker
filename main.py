@@ -31,6 +31,10 @@ from settings import settings, validate_api_credentials
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Maintainer-recommended FileBot rename patterns (see About page).
+FILEBOT_MOVIE_FORMAT = "{drive}/Videos/{plex} ({certification}) [{vf}]"
+FILEBOT_TV_FORMAT = "{drive}/Videos/{plex} ({certification}) [{vf}]"
+
 POSTER_DIR = settings.resolved_poster_dir()
 POSTER_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -192,6 +196,20 @@ def page_settings(request: Request, db: Session = Depends(get_db)):
     if _is_htmx(request):
         return templates.TemplateResponse(request, "partials/main_settings.html", ctx)
     return templates.TemplateResponse(request, "pages/settings.html", ctx)
+
+
+@app.get("/about", response_class=HTMLResponse)
+def page_about(request: Request, db: Session = Depends(get_db)):
+    ctx: dict = {
+        "active_nav": "about",
+        "settings": _settings_dict(db),
+        "app_version": settings.app_version,
+        "filebot_movie_format": FILEBOT_MOVIE_FORMAT,
+        "filebot_tv_format": FILEBOT_TV_FORMAT,
+    }
+    if _is_htmx(request):
+        return templates.TemplateResponse(request, "partials/main_about.html", ctx)
+    return templates.TemplateResponse(request, "pages/about.html", ctx)
 
 
 @app.get("/tv/{show_id}/audit", response_class=HTMLResponse)

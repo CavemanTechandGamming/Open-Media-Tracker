@@ -21,7 +21,7 @@ Maintainers may edit, close, or moderate discussions or contributions that under
 
 ### Before you open an issue
 
-1. **Read the README**, especially **Known limitations — local storage only**. Problems caused by **NAS-only paths, SMB-only mounts, or mapped network drives** are documented as **unsupported** today; opening an issue is still welcome as a **feature request**, but it may be labeled accordingly rather than treated as a defect.
+1. **Read the README** (especially **Known limitations — local storage only**) and **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)**. Problems caused by **NAS-only paths, SMB-only mounts, or mapped network drives** are documented as **unsupported** today; opening an issue is still welcome as a **feature request**, but it may be labeled accordingly rather than treated as a defect.
 2. **Search existing issues** for duplicates.
 3. **Reproduce** on the latest **Docker image** or on a clean **local dev** setup (see below).
 

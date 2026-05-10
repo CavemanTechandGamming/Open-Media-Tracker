@@ -157,7 +157,7 @@ There is **no centralized rate limiter**. Load is reduced by design (mtime gate,
 | Method / path | Purpose |
 |---------------|---------|
 | `GET /` | Redirects to **`/tv`**. |
-| `GET /movies`, `GET /tv`, `GET /settings` | Full pages or **HTMX** `#main-content` fragments when `HX-Request: true`. |
+| `GET /movies`, `GET /tv`, `GET /settings`, `GET /about` | Full pages or **HTMX** `#main-content` fragments when `HX-Request: true`. |
 | `GET /tv/{id}/audit` | Missing-episode list for one show (reads `episodes` where `exists_locally` is false). |
 | `GET /health` | `{"status":"ok"}` for Docker health checks and proxies. |
 | `GET /fragments/movies-table`, `/fragments/tv-table` | HTMX table refresh. |

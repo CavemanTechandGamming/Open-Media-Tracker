@@ -4,7 +4,7 @@
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/)
 [![Docker Ready](https://img.shields.io/badge/docker-ready-2496ED?logo=docker)](https://docs.docker.com/get-docker/)
 
-**Open Media Tracker** is a self-hosted, **Docker-first** dashboard for auditing **TV** and **movie** libraries against **TMDB** and **TVDB**. It targets homelab and low-power hardware: **shallow scanning** (top-level folders + mtime gates) keeps disk and API load predictable on very large collections.
+**Open Media Tracker** is a self-hosted, **Docker-first** web application for cataloguing television and feature-film libraries and reconciling them with **TMDB** and **TVDB**. Change-aware, shallow indexing (top-level folders and modification times) bounds disk and API utilization for large collections, including on modest hardware.
 
 ---
 
@@ -23,6 +23,8 @@
 **NAS, SMB/CIFS, mapped network drives, and similar remote storage are not supported** in this release. Bind mounts that rely on Windows letter-mapped shares or opaque network paths often appear empty or inconsistent inside the container and are **out of scope** for bug reports until first-class remote support exists.
 
 If you need network-backed media today, sync or mount that content to a **local directory** the container can see as a normal folder, then point `TV_PATH` / `MOVIE_PATH` there.
+
+**Acknowledged product limitations** (duplicate rows after renames, missing-episode UI vs counts, layout/scroll) live in **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)**.
 
 ---
 
@@ -133,6 +135,7 @@ Variables are read from the environment (and optional **`.env`** file) via **pyd
 | `TVDB_PIN` | No | TVDB subscriber **PIN**, only if your account requires it for login. |
 | `APP_PORT` | No | HTTP listen port (default **8383**). Compose maps host↔container using this value. |
 | `APP_PUBLIC_HOST` | No | Informational hostname in logs (default `localhost`); does not change bind address. |
+| `APP_VERSION` | No | Version string shown on the **About** page (default **`1.0.0`**). |
 | `CONFIG_PATH` | No | Writable app data root. Compose typically sets **`/config`**. SQLite defaults to `$CONFIG_PATH/open_media_tracker.db`; thumbnails to `$CONFIG_PATH/cache/posters/`; logs to `$CONFIG_PATH/logs/`. Unset locally → `./data/` under the app. |
 | `DATABASE_PATH` | No | Explicit SQLite file path; overrides the `CONFIG_PATH`-derived default when set. |
 | `LIBRARY_TV_PATH` | No | Path **inside** the running process to the TV root. Compose pins **`/media/tv`**. |
@@ -156,7 +159,7 @@ Variables are read from the environment (and optional **`.env`** file) via **pyd
 
 | Area | Behavior |
 |------|----------|
-| **Movies / TV / Settings** | Separate views (`/movies`, `/tv`, `/settings`) with HTMX-swapped main content; TV rows open a **missing-episode audit** from cached `episodes` data. |
+| **Movies / TV / Settings / About** | Separate views (`/movies`, `/tv`, `/settings`, `/about`) with HTMX-swapped main content; TV rows open a **missing-episode audit** from cached `episodes` data. **About** shows version and optional FileBot naming hints. |
 | **Scan TV / Scan Movies** | Background shallow pass; HTMX polls status fragments on each library page. |
 | **Settings** | Dedicated page; updates persisted `config` keys and reschedules APScheduler when the interval changes. |
 
@@ -181,6 +184,7 @@ Open-Media-Tracker/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
+├── KNOWN_ISSUES.md      # Acknowledged limitations (see README link)
 └── docs/
     └── ARCHITECTURE.md
 ```

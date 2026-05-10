@@ -1,0 +1,35 @@
+<div class="space-y-10">
+  <div>
+    <h2 class="text-lg font-semibold text-white">About</h2>
+    <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-300">
+      Open Media Tracker is a self-hosted web application for cataloguing television and feature-film libraries on local paths.
+      It reconciles each top-level library directory against TMDB (and TVDB when configured), presenting title and series status, artwork, and—where applicable—coverage of on-disk assets relative to provider episode rosters.
+      Indexing is change-aware at the title-folder boundary so API usage and filesystem traversal remain bounded on large collections.
+    </p>
+  </div>
+
+  <div class="rounded-2xl border border-slate-800 bg-slate-900/40 px-5 py-4 shadow-inner shadow-black/20">
+    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Software version</p>
+    <p class="mt-2 font-mono text-2xl font-semibold tabular-nums text-sky-300">{{ app_version }}</p>
+  </div>
+
+  <section class="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl shadow-black/30 backdrop-blur-sm">
+    <h3 class="text-base font-semibold text-white">FileBot naming (recommended)</h3>
+    <p class="mt-2 text-sm leading-relaxed text-slate-400">
+      Each indexed title should correspond to a single top-level folder per series or film. The patterns below are maintainer
+      <a href="https://www.filebot.net/" class="text-sky-400 underline decoration-sky-500/40 hover:text-sky-300" rel="noopener noreferrer">FileBot</a>
+      rename presets for consistent placement under <code class="rounded bg-slate-800 px-1 py-0.5 text-slate-200">Videos</code>.
+    </p>
+
+    <div class="mt-6 grid gap-6 md:grid-cols-2">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Movie format</p>
+        <pre class="mt-2 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs leading-relaxed text-emerald-200/95">{{ filebot_movie_format }}</pre>
+      </div>
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-slate-500">TV format</p>
+        <pre class="mt-2 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-xs leading-relaxed text-sky-200/95">{{ filebot_tv_format }}</pre>
+      </div>
+    </div>
+  </section>
+</div>

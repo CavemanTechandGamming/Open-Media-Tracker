@@ -14,6 +14,7 @@ class AppSettings(BaseSettings):
 
     app_port: int = Field(default=8383, ge=1, le=65535)
     app_public_host: str = "localhost"
+    app_version: str = Field(default="1.0.0", min_length=1, max_length=64)
 
     config_path: str = ""
     database_path: str = ""
