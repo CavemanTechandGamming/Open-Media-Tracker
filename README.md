@@ -196,6 +196,7 @@ Open-Media-Tracker/
 - First-class **remote / NAS** library support and clearer mount guidance.
 - **Authentication** for exposed installs.
 - **Notifications** (webhook / email) for scan failures or catalog drift.
+- **Data export** to spreadsheet formats (e.g. **Excel** `.xlsx` or **CSV** for import into **Google Sheets** and similar tools).
 - **Tests** (pytest) for scanner and HTTP boundaries.
 
 Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
