@@ -1,17 +1,38 @@
 # Architecture — Open Media Tracker
 
-This document describes how the application is structured internally: shallow scanning, persistence, and external APIs.
+This document is the **technical deep-dive** for maintainers and advanced operators: stack overview, **shallow scanner design** (including behavior on very large libraries), **thumbnail pipeline**, persistence, and external APIs.
 
 ---
 
-## High-level diagram
+## System overview
+
+Open Media Tracker is a **single-process** web application:
+
+| Layer | Technology | Role |
+|-------|-------------|------|
+| **HTTP / HTML** | **FastAPI** | Routes, dependency-injected DB sessions, JSON health endpoint, Jinja2-rendered pages. |
+| **Interactivity** | **HTMX** | Partial page updates for scan progress and settings without a separate SPA build. |
+| **Styling** | **Tailwind CSS** (CDN) | Utility-first layout in templates. |
+| **Data** | **SQLite** + **SQLAlchemy 2.x** | `media`, `episodes`, `config` tables; `init_db()` creates schema on startup. |
+| **Jobs** | **APScheduler** | Background interval job reuses the same scan routine as manual triggers. |
+| **Configuration** | **pydantic-settings** (`settings.py`) | Validates and loads environment variables; startup checks TMDB + TVDB requirements before binding the server. |
+
+### Lifespan and zero-touch initialization
+
+On application startup (`main.py` lifespan):
+
+1. **Credential validation** — logs clear errors and exits if TMDB (token or key) and `TVDB_API_KEY` are missing.
+2. **`ensure_runtime_directories()`** — creates database parent directory, **`cache/posters/`**, and **`logs/`** under `CONFIG_PATH` or `./data/`.
+3. **`init_db()`** — `Base.metadata.create_all()` against SQLite; **no manual migrations** in-tree (Alembic not used).
+4. **`seed_defaults()`** — inserts missing `config` rows from the environment so the UI has sensible defaults.
+5. **APScheduler** — registers the shallow full-library job at the configured interval.
 
 ```text
-┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   Browser   │────▶│   FastAPI    │────▶│ SQLite (SQLAlch.)│
-│  HTMX UI    │◀────│   Jinja2     │◀────│  media, episodes │
-└─────────────┘     └──────┬───────┘     │  config          │
-                           │             └─────────────────┘
+┌─────────────┐     ┌──────────────┐     ┌──────────────────┐
+│   Browser   │────▶│   FastAPI    │────▶│ SQLite           │
+│  HTMX +     │◀────│   Jinja2     │◀────│ media, episodes, │
+│  Tailwind   │     └──────┬───────┘     │ config           │
+└─────────────┘            │             └──────────────────┘
                            │
               ┌────────────┼────────────┐
               ▼            ▼            ▼
@@ -23,132 +44,135 @@ This document describes how the application is structured internally: shallow sc
      ┌──────┴──────┐
      ▼             ▼
 ┌─────────┐   ┌─────────┐
-│  TMDB   │   │  TVDB   │  (optional)
+│  TMDB   │   │  TVDB   │
 │  API v3 │   │  API v4 │
 └─────────┘   └─────────┘
 ```
 
 ---
 
-## Data flow: shallow scan
+## Scanner logic: shallow passes and mtime gates
 
-The design goal is to stay efficient on **very large libraries** (for example, multi-terabyte arrays of files) by **not** deep-walking the tree on every pass.
+Design goal: remain usable on **10 TB+** libraries and **low-power** hosts by avoiding full-tree walks on every pass.
 
-### 1. Top-level directory enumeration
+### 1. Top-level enumeration (`os.scandir`)
 
-For each configured root (`LIBRARY_TV_PATH`, `LIBRARY_MOVIES_PATH`), the scanner uses **`os.scandir()`** on that root only. Each **immediate child that is a directory** becomes one logical title (one TV series or one movie).
+For each configured root (`LIBRARY_TV_PATH` / `LIBRARY_MOVIES_PATH`), the scanner opens the root with **`os.scandir()`** and considers **only immediate child directories** as separate titles (one TV series or one movie per folder). No recursive descent at this stage.
 
-### 2. Modification time gate
+### 2. Modification-time gate
 
-For each folder path, the scanner reads **`st_mtime`** (via `stat()` on the `DirEntry`), normalized to a rounded float for stable comparisons. It compares this value to the **`folder_mtime`** stored on the corresponding `Media` row in SQLite.
+For each candidate folder, the code reads **`st_mtime`** (via `DirEntry.stat(follow_symlinks=False)`), normalized for stable comparison, and compares it to **`Media.folder_mtime`** in SQLite.
 
-- **If the row exists and `mtime` matches** and a prior successful API sync timestamp exists → **no TMDB/TVDB calls** and **no recursive file walk** for that folder on this pass.
-- **If the folder is new or `mtime` differs** → the scanner performs metadata refresh (and TV-specific local episode detection—see below).
+| Condition | Behavior |
+|-----------|----------|
+| Row exists, **mtime unchanged**, and **`last_api_sync`** is set | **Skip** TMDB/TVDB calls and **skip** recursive file enumeration for that folder on this pass. |
+| New folder or **mtime changed** | Run full **refresh** path for that title (APIs + local file logic as below). |
 
-This is the core **“shallow scan”**: the expensive work is **gated** on filesystem change at the **show/movie folder** boundary.
+This is the **shallow scan contract**: cost scales with **number of top-level folders** plus **folders that actually changed**, not with total file count on every run.
 
-### 3. What happens when a folder is “dirty”
+### 3. Work done when a folder is “dirty”
 
-**TV**
+**Television**
 
-1. Search TMDB by folder name (sanitized).
-2. Fetch show details, external IDs (including TVDB id when present).
-3. Optionally call TVDB extended series if credentials exist.
-4. For each season from TMDB, fetch season JSON and build the authoritative episode list.
-5. **Only now** walk **under that folder** recursively to find video files and parse `SxxEyy` / `NxNN`-style patterns into `(season, episode)` keys.
-6. Upsert `Episode` rows and counts (`total_episodes_api`, `episodes_present_local`).
-7. Download poster, resize, save under `data/posters/`.
+1. TMDB TV search by sanitized folder name.
+2. Show detail + external IDs; optional TVDB extended series for status cross-check.
+3. Season JSON from TMDB to build the canonical episode list.
+4. **`os.walk`** **only under that show’s folder** to collect video files and parse `SxxEyy` / `1x01`-style patterns into `(season, episode)` keys.
+5. Replace `Episode` rows; update counts and errors; commit.
 
 **Movies**
 
 1. TMDB movie search + detail.
-2. Poster caching as above.
-3. Presence is a simple **“any video extension under the folder”** check.
+2. **`os.walk`** (or equivalent) under the movie folder to detect **any** supported video extension for “present” semantics.
 
 ### 4. Manual vs scheduled scans
 
-Both **HTTP-triggered scans** (HTMX buttons) and **APScheduler** jobs call the same **`scan_library`** routine. The **mtime gate** applies in every case, so periodic runs remain cheap when nothing under a top-level folder has changed.
+HTTP **Scan TV** / **Scan Movies** handlers and **APScheduler** both call **`scan_library()`**. The **mtime gate** applies in every case, so scheduled runs stay cheap when nothing under a top-level folder has changed.
+
+---
+
+## Image pipeline (local thumbnails)
+
+The UI references **stable URLs** under **`/posters/{media_id}.jpg`**, backed by **`StaticFiles`** on a directory resolved from settings:
+
+| Mode | Filesystem path |
+|------|------------------|
+| Docker (`CONFIG_PATH=/config`) | `/config/cache/posters/{id}.jpg` |
+| Local dev (no `CONFIG_PATH`) | `./data/cache/posters/{id}.jpg` |
+
+**Flow**
+
+1. After TMDB returns a **`poster_path`**, **`download_poster_thumbnail()`** in `scanner.py` fetches the image from TMDB’s CDN.
+2. **Pillow** opens the image, converts to RGB, optionally **downscales** (max width ~220 px), and writes **JPEG** with moderate quality.
+3. **`Media.poster_local`** stores the web path (`/posters/{id}.jpg`) for templates.
+
+This keeps the dashboard **snappy** on slow links and avoids depending on TMDB’s image URLs at render time.
 
 ---
 
 ## Database schema (conceptual)
 
-SQLite holds three logical tables (see `models.py` for exact columns).
+See **`models.py`** for exact columns.
 
 ### `media`
 
 One row per **top-level library folder** that has been seen.
 
-- Identity: `folder_path` (unique), `folder_name`, `media_type` (`tv` | `movie`).
-- Sync: `folder_mtime`, `last_api_sync`, `last_error`.
-- External IDs: `tmdb_id`, `tvdb_id`.
-- Display: `title`, `status`, `poster_local` (URL path served by the app).
-- TV aggregates: `total_episodes_api`, `episodes_present_local`.
+- **Identity:** `folder_path` (unique), `folder_name`, `media_type` (`tv` \| `movie`).
+- **Sync:** `folder_mtime`, `last_api_sync`, `last_error`.
+- **External IDs:** `tmdb_id`, `tvdb_id`.
+- **Display:** `title`, `status`, `poster_local`.
+- **TV aggregates:** `total_episodes_api`, `episodes_present_local`.
 
 ### `episodes`
 
-Child rows for **TV** shows after a successful refresh.
-
-- Foreign key: `media_id` → `media.id`.
-- Keys: `season_number`, `episode_number`, optional `title`.
-- `exists_locally`: whether a matching file was found under the show folder.
+Child rows for **TV** after a successful refresh: season/episode numbers, optional title, **`exists_locally`**.
 
 ### `config`
 
-Key/value settings overridden by the UI or seeded from the environment (`LIBRARY_*`, `TMDB_*`, `TVDB_*`, `SCAN_INTERVAL_MINUTES`, etc.).
+Key/value settings; **UI saves** override values initially **seeded from the environment**.
 
 ---
 
-## API integration (TMDB / TVDB)
+## External APIs
 
-### TMDB
+### TMDB (v3)
 
-- Uses **API v3** (`api.themoviedb.org/3`).
-- Authentication supports either:
-  - **Bearer** header (`TMDB_READ_ACCESS_TOKEN`), or
-  - **`api_key`** query parameter (`TMDB_API_KEY`),
-  with **read token preferred** when both are configured (`build_tmdb_client` in `scanner.py`).
-- Images are fetched from TMDB’s CDN once per refresh, then **stored locally** as thumbnails (no reliance on hotlinking in the UI).
+- Base URL `https://api.themoviedb.org/3`.
+- Auth: **Bearer** (`TMDB_READ_ACCESS_TOKEN`) preferred, else **`api_key`** query parameter (`TMDB_API_KEY`).
 
-### TVDB
+### TVDB (v4)
 
-- Optional **v4** client (`api4.thetvdb.com/v4`).
-- **Login** POST sends `apikey` and optionally **`pin`** (`TVDB_PIN`) when set.
-- Bearer token from login is reused until expiry (in-memory client instance).
+- Login at `https://api4.thetvdb.com/v4/login` with `apikey` and optional **`pin`**.
+- In current releases, **`TVDB_API_KEY` is required at application startup** (see `validate_api_credentials` in `settings.py`); the client is still optional inside individual scan paths when validating series status.
 
-### Rate limiting and reliability (current behavior)
+### Rate limiting (current behavior)
 
-The codebase **does not implement a dedicated rate limiter or automatic exponential backoff** today. Instead, it **reduces load by design**:
-
-- API calls happen **only** for folders that fail the **mtime gate** or are new.
-- Requests for a given refresh are effectively **sequential** (per folder, per season), which naturally spaces traffic compared to aggressive parallel crawlers.
-
-If TMDB or TVDB returns **HTTP errors**, those are logged and surfaced on the **`Media` row** (`last_error`) and may appear in scan progress panels. Operators can **lower scan frequency**, **split libraries**, or retry later.
-
-**Improvement candidates** (see README roadmap): centralized retry with `Retry-After`, configurable concurrency caps, and telemetry on 429 responses.
+There is **no centralized rate limiter**. Load is reduced by design (mtime gate, mostly sequential requests per folder). Failures surface on **`Media.last_error`** and in scan UI fragments.
 
 ---
 
-## HTTP surface (FastAPI)
+## HTTP surface (selected routes)
 
-| Area | Role |
-|------|------|
+| Method / path | Purpose |
+|---------------|---------|
 | `GET /` | Dashboard (library table + settings). |
-| `GET /health` | JSON `{"status":"ok"}` for Docker healthchecks and proxies. |
-| `GET /fragments/*` | HTMX partials (scan status, media table). |
-| `POST /scan/tv`, `/scan/movies` | Kick off background threads that call `scan_library`. |
-| `POST /settings` | Persist `Config` rows; reschedule APScheduler interval job when the interval changes. |
-| `GET /posters/...` | Static JPEG thumbnails from disk. |
+| `GET /health` | `{"status":"ok"}` for Docker health checks and proxies. |
+| `GET /fragments/*` | HTMX partials. |
+| `POST /scan/tv`, `POST /scan/movies` | Start background scan threads. |
+| `POST /settings` | Persist `config`; reschedule interval job when `SCAN_INTERVAL_MINUTES` changes. |
+| `GET /posters/...` | Cached JPEG thumbnails. |
 
 ---
 
-## Related files
+## Key source files
 
 | File | Responsibility |
-|------|------------------|
-| `main.py` | App factory, routes, static mount, scheduler lifecycle, config seeding. |
-| `scanner.py` | Shallow scan, TMDB/TVDB clients, poster pipeline, background workers. |
-| `database.py` | SQLite URL, session factory, `init_db()`. |
-| `models.py` | SQLAlchemy ORM models. |
+|------|----------------|
+| `main.py` | FastAPI app, lifespan, routes, static mount, scheduler wiring, config seeding. |
+| `scanner.py` | Shallow scan, TMDB/TVDB clients, poster download, background workers. |
+| `settings.py` | Environment model, directory resolution, API validation. |
+| `database.py` | SQLite URL, engine, `SessionLocal`, `init_db()`. |
+| `models.py` | ORM models. |
 
-For user-facing setup, see the root **README.md**.
+User-facing installation: **[README.md](../README.md)**.

@@ -2,175 +2,202 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/)
-[![Docker](https://img.shields.io/badge/docker-compose-ready-2496ED.svg)](docker-compose.yml)
+[![Docker Ready](https://img.shields.io/badge/docker-ready-2496ED?logo=docker)](https://docs.docker.com/get-docker/)
 
-**Self-host a lightweight dashboard that audits your TV and movie folders against TMDB (and optionally TVDB)—without hammering APIs or your disks.**
+**Open Media Tracker** is a self-hosted, **Docker-first** dashboard for auditing **TV** and **movie** libraries against **TMDB** and **TVDB**. It targets homelab and low-power hardware: **shallow scanning** (top-level folders + mtime gates) keeps disk and API load predictable on very large collections.
+
+---
+
+## Requirements
+
+| Requirement | Notes |
+|-------------|--------|
+| **Docker** | Recommended: Docker Engine **24+** with Compose V2, or **Docker Desktop**. |
+| **Python** | **3.14** if you run from source (see [CONTRIBUTING.md](CONTRIBUTING.md)). |
+| **APIs** | **TMDB**: `TMDB_READ_ACCESS_TOKEN` *or* `TMDB_API_KEY`. **TVDB**: `TVDB_API_KEY` is **required** at startup in current releases. |
+
+### Known limitations — local storage only
+
+**The application is designed and tested for libraries on the host’s local filesystem** (paths you bind-mount into the container, or local paths when running without Docker).
+
+**NAS, SMB/CIFS, mapped network drives, and similar remote storage are not supported** in this release. Bind mounts that rely on Windows letter-mapped shares or opaque network paths often appear empty or inconsistent inside the container and are **out of scope** for bug reports until first-class remote support exists.
+
+If you need network-backed media today, sync or mount that content to a **local directory** the container can see as a normal folder, then point `TV_PATH` / `MOVIE_PATH` there.
 
 ---
 
 ## Features
 
-| Capability | What it does |
-|------------|----------------|
-| **Shallow scanning** | Walks only **top-level** library folders with `os.scandir()`. Compares each folder’s `st_mtime` to SQLite; **TMDB/TVDB and deeper file checks run only when the folder is new or changed.** |
-| **Metadata integration** | Resolves titles, status (e.g. ended vs. returning), IDs, and episode lists via **TMDB**; optional **TVDB v4** login for an extra series-status signal when configured. |
-| **Local poster cache** | Downloads posters and stores **resized JPEG thumbnails** under `data/cache/posters/` locally, or **`/config/cache/posters/`** when using Docker **`CONFIG_PATH=/config`**. No hotlinked CDN images in the browser. |
-| **Independent scans** | **Scan TV** and **Scan Movies** are separate actions with **HTMX** progress panels (no full-page reload). |
-| **Configurable schedules** | **APScheduler** runs periodic shallow passes; interval is configurable (minimum 15 minutes). |
-| **In-app settings** | API keys and paths can be stored in SQLite after the first save (seeded from `.env` on a fresh install). |
+| Capability | Description |
+|------------|-------------|
+| **Shallow scanning** | Uses **`os.scandir()`** on each library root only. Compares each title folder’s **`st_mtime`** to SQLite; **TMDB/TVDB work and deep file walks run only when that folder is new or changed.** |
+| **Metadata** | TMDB for search, details, seasons, and posters; TVDB v4 for login and optional series-status cross-check when credentials are present. |
+| **Independent audits** | **Scan TV** and **Scan Movies** are separate actions with **HTMX** progress fragments. |
+| **Scheduled passes** | **APScheduler** runs the same shallow logic on an interval (minimum **15** minutes). |
+| **Zero-touch startup** | On first boot the app **creates** the SQLite file and **all tables** (`Base.metadata.create_all`), **creates** cache/log directories under `CONFIG_PATH` (or `./data/` in dev), and **seeds** `config` from the environment. No manual database steps. |
+| **Poster pipeline** | Posters are downloaded once, resized to JPEG, and served from **`/posters`** so the UI stays fast without hotlinking TMDB CDN URLs in the browser. |
 
 ---
 
-## Tech stack
+## Quick start (Docker — recommended)
 
-| Layer | Choice |
-|-------|--------|
-| **Backend** | Python 3.14, **FastAPI**, **Uvicorn** |
-| **Frontend** | **HTMX** + **Tailwind CSS** (CDN) + Jinja2 templates |
-| **Database** | **SQLite** via **SQLAlchemy** 2.x |
-| **Jobs** | **APScheduler** (background interval scans) |
-| **Container** | **Docker** & **Docker Compose** |
+Default HTTP port is **8383** (avoids common conflicts with Plex, Jellyfin, Pi-hole, etc.). Override with **`APP_PORT`** in `.env` without rebuilding the image.
+
+### 1. Create a project directory and `.env`
+
+On the host, create a folder (for example `open-media-tracker`) and a **`.env`** file. Copy variable names from [.env.example](.env.example) and set at least:
+
+- `DOCKER_IMAGE` — your image on Docker Hub, e.g. `youruser/open-media-tracker:latest`
+- `TV_PATH`, `MOVIE_PATH` — **local** host paths to library roots (read-only in Compose)
+- `TMDB_READ_ACCESS_TOKEN` **or** `TMDB_API_KEY`
+- `TVDB_API_KEY`
+
+### 2. Add `docker-compose.yml`
+
+Save the following next to `.env` (same directory):
+
+```yaml
+name: open-media-tracker
+
+networks:
+  open-media-tracker:
+    driver: bridge
+
+services:
+  open-media-tracker:
+    image: ${DOCKER_IMAGE:?Set DOCKER_IMAGE in .env}
+    container_name: open-media-tracker
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - open-media-tracker
+    ports:
+      - "${APP_PORT:-8383}:${APP_PORT:-8383}"
+    env_file:
+      - .env
+    environment:
+      APP_PORT: ${APP_PORT:-8383}
+      CONFIG_PATH: /config
+      LIBRARY_TV_PATH: /media/tv
+      LIBRARY_MOVIES_PATH: /media/movies
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
+      TMDB_READ_ACCESS_TOKEN: ${TMDB_READ_ACCESS_TOKEN:-}
+      TVDB_API_KEY: ${TVDB_API_KEY:-}
+      TVDB_PIN: ${TVDB_PIN:-}
+    volumes:
+      - open-media-tracker-config:/config
+      - ${TV_PATH:?Set TV_PATH in .env}:/media/tv:ro
+      - ${MOVIE_PATH:?Set MOVIE_PATH in .env}:/media/movies:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('APP_PORT','8383')+'/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  open-media-tracker-config:
+```
+
+### 3. Start
+
+```bash
+docker compose up -d
+```
+
+On success, logs include **`Ready at http://localhost:8383`** (port reflects **`APP_PORT`**). Open that URL in a browser.
+
+**Persistence:** A named volume holds **`/config`** (SQLite at `open_media_tracker.db`, thumbnails under `cache/posters/`, logs under `logs/`). Library bind mounts are **`:ro`**.
+
+### Alternative: clone and build from source
+
+For development or private builds, clone the repository and use the root [`docker-compose.yml`](docker-compose.yml) with `docker compose up --build`, or run **uvicorn** locally — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## Quick start (Docker Compose)
+## Configuration reference
 
-Designed to sit beside **Plex**, **Jellyfin**, **Pi-hole**, **OMV**, **Audiobookshelf**, etc.: the default HTTP port is **8383** (not 80, 443, 8000, 8080, 8096, or 32400). Change **`APP_PORT`** in `.env` if that port is taken—**no image rebuild** required.
-
-From the repository root:
-
-```bash
-git clone https://github.com/YOUR_ORG/Open-Media-Tracker.git
-cd Open-Media-Tracker
-cp .env.example .env
-```
-
-Edit `.env`:
-
-1. Set **`TV_PATH`** and **`MOVIE_PATH`** to **host** directories for your libraries (Compose bind-mounts them **read-only** into `/media/tv` and `/media/movies`). If you only use TV, point `MOVIE_PATH` at an empty folder on the host.
-2. Set **either** `TMDB_READ_ACCESS_TOKEN` **or** `TMDB_API_KEY` (and optionally `TVDB_API_KEY`).
-3. Optionally set **`APP_PORT`** (default `8383`) and **`APP_PUBLIC_HOST`** (shown in startup logs).
-
-Start the stack:
-
-```bash
-docker compose up --build
-```
-
-On first boot the container logs **`Ready at http://localhost:8383`** (port follows **`APP_PORT`**).
-
-Open **http://localhost:8383** in your browser unless you changed `APP_PORT`.
-
-**Data layout:** A named Docker volume mounts **`/config`** inside the container for SQLite (`open_media_tracker.db`) and poster thumbnails under **`cache/posters/`**. Your media mounts are **`:ro`** so the app cannot modify library files.
-
-### Run from Docker Hub (no `git clone` on the host)
-
-Maintainers publish images with [GitHub Actions](.github/workflows/docker-publish.yml) after adding these **repository secrets**: **`DOCKERHUB_USERNAME`**, **`DOCKERHUB_TOKEN`** (create an access token under [Docker Hub → Account Settings → Security](https://hub.docker.com/settings/security)).
-
-| Trigger | What gets pushed |
-|---------|-------------------|
-| **Git tag** `v1.2.3` | `youruser/open-media-tracker:1.2.3`, `1.2`, and **`latest`** (linux/amd64 + linux/arm64) |
-| **Actions → Publish Docker image → Run workflow** | Tag you type (default **`edge`**) — use when you want a one-off build without a semver tag |
-
-**On any machine** you only need a `.env` (from [.env.example](.env.example)) and Compose:
-
-1. Clone **once** (or copy only `docker-compose.yml` + `.env.example`), set `DOCKER_IMAGE=YOURDOCKERHUB/open-media-tracker:latest` in `.env`, fill API keys and `TV_PATH` / `MOVIE_PATH`.
-2. Run:
-
-   ```bash
-   docker compose pull
-   docker compose up -d --no-build
-   ```
-
-`--no-build` skips a local image build and uses the pulled image. Omit `--no-build` when you are developing with `build: .` and leave `DOCKER_IMAGE` unset or equal to the local image name.
-
-First pull:
-
-```bash
-docker pull YOURDOCKERHUB/open-media-tracker:latest
-```
-
----
-
-## Configuration
-
-Environment variables seed the database **once** for missing keys. Values changed in the **Settings** section of the web UI are persisted in SQLite and override env defaults for that key thereafter.
+Variables are read from the environment (and optional **`.env`** file) via **pydantic-settings**. Values saved in the **Settings** UI are stored in SQLite and override env defaults for the same keys.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TMDB_READ_ACCESS_TOKEN` | One of TMDB auth\* | TMDB **Bearer** read access token from [API settings](https://www.themoviedb.org/settings/api). **Preferred** if both TMDB variables are set. |
-| `TMDB_API_KEY` | One of TMDB auth\* | Classic TMDB **v3 API key** (query parameter). Use if you do not use a read access token. |
-| `TVDB_API_KEY` | No | TVDB **v4** API key ([account](https://thetvdb.com/dashboard/account/apikey)). Enables optional series status cross-check. |
-| `TVDB_PIN` | No | Subscriber PIN for TVDB login, **only** if your TVDB setup requires it; sent with the login payload when non-empty. |
-| `APP_PORT` | No | Uvicorn listen port (default **`8383`**). Docker Compose maps host→container using this value. |
-| `APP_PUBLIC_HOST` | No | Hostname printed in startup logs (default `localhost`). Does not change binding; use for clarity on LAN installs. |
-| `CONFIG_PATH` | No | When set (Compose uses **`/config`**), SQLite defaults to **`$CONFIG_PATH/open_media_tracker.db`** and posters to **`$CONFIG_PATH/cache/posters/`**. Local dev leaves this unset (`./data/` under the app). |
-| `DOCKER_IMAGE` | Compose | **Docker Hub image** (e.g. `youruser/open-media-tracker:latest`). Set in `.env` when using **`docker compose pull`** instead of building locally. |
-| `TV_PATH` / `MOVIE_PATH` | Compose | **Host paths** passed into `docker-compose.yml` for **read-only** bind mounts at `/media/tv` and `/media/movies`. |
-| `LIBRARY_TV_PATH` | Recommended | Path seen **inside the running app** to the TV root. Compose pins **`/media/tv`**; override only if you customize mounts. |
-| `LIBRARY_MOVIES_PATH` | Recommended | Path seen **inside the running app** to the movies root. Compose pins **`/media/movies`**. |
-| `SCAN_INTERVAL_MINUTES` | No | Background shallow-scan interval in minutes (default `360`; app enforces a **minimum of 15**). |
-| `DATABASE_PATH` | No | Optional explicit SQLite file path; overrides the `CONFIG_PATH` default when set. |
+| `TMDB_READ_ACCESS_TOKEN` | One of TMDB\* | TMDB **Bearer** read access token ([API settings](https://www.themoviedb.org/settings/api)). Used in preference to the API key when both are set. |
+| `TMDB_API_KEY` | One of TMDB\* | TMDB **v3 API key** (query parameter). |
+| `TVDB_API_KEY` | **Yes** | TVDB **v4** API key ([TheTVDB account](https://thetvdb.com/dashboard/account/apikey)). Required for application startup in current images. |
+| `TVDB_PIN` | No | TVDB subscriber **PIN**, only if your account requires it for login. |
+| `APP_PORT` | No | HTTP listen port (default **8383**). Compose maps host↔container using this value. |
+| `APP_PUBLIC_HOST` | No | Informational hostname in logs (default `localhost`); does not change bind address. |
+| `CONFIG_PATH` | No | Writable app data root. Compose typically sets **`/config`**. SQLite defaults to `$CONFIG_PATH/open_media_tracker.db`; thumbnails to `$CONFIG_PATH/cache/posters/`; logs to `$CONFIG_PATH/logs/`. Unset locally → `./data/` under the app. |
+| `DATABASE_PATH` | No | Explicit SQLite file path; overrides the `CONFIG_PATH`-derived default when set. |
+| `LIBRARY_TV_PATH` | No | Path **inside** the running process to the TV root. Compose pins **`/media/tv`**. |
+| `LIBRARY_MOVIES_PATH` | No | Path **inside** the process to the movies root. Compose pins **`/media/movies`**. |
+| `SCAN_INTERVAL_MINUTES` | No | Background scan interval in minutes (default **360**; minimum **15** enforced). |
+| `SQL_ECHO` | No | Set to `true` / `1` / `yes` to echo SQL to logs (debug). |
 
-\*You must configure **at least one** of `TMDB_READ_ACCESS_TOKEN` or `TMDB_API_KEY`.
+**Docker Compose–only** (not read by `settings.py`; used for orchestration):
 
-### Security notes for publishing this repo
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DOCKER_IMAGE` | For Hub pulls | Full image reference, e.g. `youruser/open-media-tracker:latest`. |
+| `TV_PATH` | Yes (Compose file) | **Host** path bound read-only to `/media/tv`. |
+| `MOVIE_PATH` | Yes (Compose file) | **Host** path bound read-only to `/media/movies`. |
 
-- Never commit **`.env`** or SQLite files; **`.gitignore`** excludes them. Use **`.env.example`** only for empty templates.
-- Prefer **read-only** Docker binds for library roots (already set in `docker-compose.yml`).
-- Dependency versions are **pinned** in `requirements.txt` to reduce surprise upgrades in production.
+\*Configure **at least one** of `TMDB_READ_ACCESS_TOKEN` or `TMDB_API_KEY`.
 
 ---
 
 ## Usage
 
-### Web UI
+| Area | Behavior |
+|------|----------|
+| **Dashboard** | Table of indexed titles, status, IDs, missing-episode counts (TV), cached posters. |
+| **Scan TV / Scan Movies** | Background shallow pass; HTMX polls status fragments. |
+| **Settings** | Updates persisted `config` keys; changing the scan interval reschedules APScheduler. |
 
-- **Library table**: Alphabetical overview of indexed TV and movies with status badges, TMDB/TVDB IDs, **missing episode counts** (TV), and locally cached thumbnails.
-- **Scan TV / Scan Movies**: Triggers a shallow pass for that library type. Progress bars update via HTMX polling.
-- **Settings**: Update paths, TMDB/TVDB credentials, and scan interval. Saving replaces the page body via HTMX.
+---
 
-### Manual vs. periodic scans
+## Publishing & CI
 
-| Mode | Behavior |
-|------|-----------|
-| **Manual** | Click **Scan TV** or **Scan Movies**. Only folders whose **mtime** changed (or are new) trigger API work and local episode enumeration for TV. |
-| **Periodic** | APScheduler runs on the interval from `SCAN_INTERVAL_MINUTES` (or the value saved in Settings). The same shallow + mtime rules apply—**unchanged folders are skipped** for metadata refresh. |
+Maintainers can push multi-arch images (**linux/amd64**, **linux/arm64**) with [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) after configuring GitHub Actions secrets **`DOCKERHUB_USERNAME`** and **`DOCKERHUB_TOKEN`**. See [CONTRIBUTING.md](CONTRIBUTING.md#publishing-docker-images-docker-hub).
 
 ---
 
 ## Project layout
 
-```
+```text
 Open-Media-Tracker/
-├── main.py              # FastAPI app, routes, scheduler wiring
+├── main.py              # FastAPI app, lifespan, routes, scheduler
 ├── scanner.py           # Shallow scan, TMDB/TVDB, posters
+├── settings.py          # Environment configuration (pydantic-settings)
+├── database.py          # SQLite engine, sessions, init_db()
 ├── models.py            # SQLAlchemy models
-├── database.py          # Engine & sessions
-├── templates/           # Jinja + HTMX UI
-├── requirements.txt
+├── templates/           # Jinja2 + HTMX
 ├── Dockerfile
 ├── docker-compose.yml
+├── requirements.txt
 └── docs/
-    └── ARCHITECTURE.md  # Internal design notes
+    └── ARCHITECTURE.md
 ```
 
 ---
 
-## Roadmap
+## Roadmap (non-binding)
 
-Ideas for future releases (not commitments):
+- First-class **remote / NAS** library support and clearer mount guidance.
+- **Authentication** for exposed installs.
+- **Notifications** (webhook / email) for scan failures or catalog drift.
+- **Tests** (pytest) for scanner and HTTP boundaries.
 
-- **Notifications**: webhook or email when new seasons end, missing episodes spike, or scans fail.
-- **Authentication**: optional login / API tokens for multi-user or internet-exposed installs.
-- **Smarter matching**: alternate title sources, manual TMDB/TVDB ID override per folder.
-- **Rate-limit hygiene**: configurable backoff, concurrency caps, and honor `Retry-After` where providers send it.
-- **Tests**: pytest suite for scanner logic and HTTP boundaries.
-
-Contributions are welcome—see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## License
 
-This project is licensed under the **MIT License**—see [LICENSE](LICENSE).
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE).
